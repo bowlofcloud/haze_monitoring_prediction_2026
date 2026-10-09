@@ -1,0 +1,6 @@
+forecast_date,region,selected_model,predicted_psi,5a GLM_psi,5b Quadratic_psi,5c Log GLM_psi,5d GAM_psi
+2026-10-09,North,5a GLM,107.9,107.9,115.1,87.5,105.5
+2026-10-09,South,5a GLM,111.3,111.3,107.4,90.7,105.1
+2026-10-09,East,5a GLM,121.2,121.2,118.6,97.2,116.3
+2026-10-09,West,5a GLM,144.7,144.7,155.1,102.0,147.5
+2026-10-09,Central,5a GLM,136.9,136.9,141.8,104.9,133.3

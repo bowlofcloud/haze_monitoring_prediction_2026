@@ -1,0 +1,14 @@
+# Raw downloads are large and can be re-created with the scripts
+data/raw/*
+!data/raw/.gitkeep
+
+# Hotspot point file can be tens of MB
+data/processed/hotspots_points.csv
+
+# Python / Jupyter clutter
+__pycache__/
+.ipynb_checkpoints/
+.venv/
+venv/
+.env
+.DS_Store
