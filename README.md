@@ -2,7 +2,7 @@
 
 This project combines Singapore air-quality observations, weather reanalysis, and satellite fire-hotspot data to explore haze patterns and forecast 24-hour PSI for the next three days in Singapore's North, South, East, West, and Central regions.
 
-The workflow downloads and prepares daily data, builds lagged predictors, compares four regional forecasting models, and produces a three-day forecast table with prediction intervals and visualizations. The analysis is exploratory: the forecasts are not official NEA advisories.
+The workflow downloads and prepares daily data, builds lagged predictors, compares a basic and a nonlinear regional forecasting model, and produces a three-day forecast table with prediction intervals and visualizations. The analysis is exploratory: the forecasts are not official NEA advisories.
 
 ## What the analysis does
 
@@ -15,7 +15,7 @@ The notebook explores:
 - Regional PSI forecasts for t+1 through t+3 using the seven daily observations from t-6 through t.
 - Horizon-specific walk-forward RMSE, confidence scores (historical share of predictions within 10 PSI), and 80%/95% prediction intervals.
 
-Parts 5 and 6 use the seven daily observations from t-6 through t to predict PSI at t+1, t+2, and t+3. Part 5 compares the four models using identical five-fold chronological validation for all five regions and all three horizons, with a purge gap equal to the horizon. Predictors include regional PSI, wind direction components and speed, hotspot counts by source region, rainfall, and humidity. Part 3 also compares dry-season PSI and unhealthy-day rates across wind direction and daily maximum wind-speed quartiles.
+Parts 5 and 6 refresh the API-backed daily tables before modeling, then use the seven daily observations from t-6 through t to predict PSI at t+1, t+2, and t+3. Part 5 compares a regularized linear Gaussian GLM (5a) with a nonlinear extension (5b) using identical five-fold chronological validation for all five regions and all three horizons, with a purge gap equal to the horizon. Both models tune ridge regularization inside each training fold. Part 5b adds log and squared terms and same-day interactions among PSI, wind, hotspots, and rain. Predictors include regional PSI, wind direction components and speed, hotspot counts by source region, rainfall, and humidity. Part 3 also compares dry-season PSI and unhealthy-day rates across wind direction and daily maximum wind-speed quartiles.
 
 ## Data sources
 
@@ -93,18 +93,16 @@ Weather for the latest days comes from Open-Meteo's forecast API because its his
 
 ## Forecast models
 
-Part 5 compares four models independently for each Singapore region:
+Part 5 compares two models independently for each Singapore region:
 
 | Part | Model | Approach |
 |---|---|---|
-| 5a | Gaussian GLM | Linear baseline with an identity link; includes out-of-fold residual diagnostics |
-| 5b | Quadratic Gaussian model | Adds squared predictor terms to represent curved effects |
-| 5c | Log-transformed Gaussian model | Applies `log1p` to nonnegative predictors; signed wind-direction components remain unchanged |
-| 5d | Gaussian GAM | Uses an additive spline for each predictor to model smooth nonlinear effects |
+| 5a | Gaussian GLM | Regularized linear baseline with an identity link and out-of-fold residual diagnostics |
+| 5b | Nonlinear Gaussian GLM | Adds `log1p` transforms, squared terms, and same-day PSI-weather-fire interactions; includes out-of-fold residual diagnostics |
 
-Part 5 compares all models using five chronological `TimeSeriesSplit` folds for each region and horizon, with a purge gap matching the forecast horizon. It selects the model with the lowest mean RMSE across the 15 region/horizon combinations. Part 6 refits only the selected model by region and horizon using the same seven-day input window; it reports horizon-specific walk-forward RMSE, 80%/95% prediction intervals, and a within-10-PSI confidence score from held-out residuals. These are historical validation estimates, not guarantees of future performance. PSI severity episodes are rare, and the Gaussian GLM residual plots show that extreme values can be underpredicted.
+Part 5 compares 5a and 5b using five chronological `TimeSeriesSplit` folds for each region and horizon, with a purge gap matching the forecast horizon. It selects the model with the lowest mean RMSE across the 15 region/horizon combinations. Both models tune ridge alpha inside the training data without using the outer test fold; Part 6 repeats tuning within each calibration fold and for the final fit. Part 6 uses the Part 5 winner by region and horizon with the same seven-day input window; it reports horizon-specific walk-forward RMSE, 80%/95% prediction intervals, and a within-10-PSI confidence score from held-out residuals. These are historical validation estimates, not guarantees of future performance. PSI severity episodes are rare, and high readings may still be underpredicted.
 
-In the currently saved notebook run, with PSI data through 8 October 2026, mean RMSE across all five regions and three horizons is 8.94 PSI points for the Gaussian GLM, 9.53 for the log-transformed GLM, 9.64 for the GAM, and 10.90 for the quadratic model. The Gaussian GLM is selected for the saved forecast. These figures change when data or model settings change; rerun the notebook for an updated comparison and forecast.
+Model scores and the selected model are recalculated from refreshed data whenever the notebook Parts 5 and 6 are rerun. The nonlinear extension may improve accuracy but is selected only when its chronological validation RMSE is lower.
 
 The Singapore map colors regions and labels them with the selected model's t+1 PSI prediction and a severity category. Its five-zone polygons are approximate Voronoi partitions around representative locations, not official PSI monitoring boundaries. The trend chart shows the previous seven days of observed PSI and the next three forecast days; the thicker line is the average across the five regions. The confidence score is the historical share of walk-forward predictions within 10 PSI, while the prediction intervals are empirical ranges; neither guarantees the accuracy of an individual forecast.
 
@@ -117,10 +115,11 @@ The Singapore map colors regions and labels them with the selected model's t+1 P
 | `data/processed/hotspots_daily.csv` | Daily fire counts by source region |
 | `data/processed/hotspots_points.csv` | Individual hotspot detections used in maps; ignored by Git because it can be large |
 | `data/processed/model_table.csv` | Merged daily feature and target table |
-| `data/processed/regional_psi_forecast.csv` | Selected-model and alternative predictions for three forecast horizons by region, with 80% and 95% prediction intervals |
+| `data/processed/regional_psi_forecast.csv` | Part 5 selected-model predictions for three forecast horizons by region, with 80% and 95% prediction intervals |
 | `figures/regional_psi_forecast_map.png` | Selected-model regional PSI forecast map |
 | `figures/regional_psi_forecast_trend.png` | Seven-day regional PSI history and forecast chart |
 | `figures/glm_residual_diagnostics.png` | Five-fold out-of-fold residual diagnostics for the Gaussian GLM, with horizons distinguished |
+| `figures/nonlinear_glm_residual_diagnostics.png` | Five-fold out-of-fold residual diagnostics for the nonlinear Gaussian GLM |
 | `figures/psi_by_wind_and_speed.png` | Dry-season PSI by wind direction and daily maximum wind-speed quartile |
 
 Raw downloads under `data/raw/` are cached locally and excluded from Git.
