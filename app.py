@@ -54,56 +54,55 @@ def render_dashboard():
     st.session_state.setdefault("page_theme", "White")
     st.session_state.setdefault("page_avatar", "Duck")
     current_theme = themes[st.session_state.page_theme]
-    header, theme_col, avatar_col = st.columns([4.5, 2.1, 1.2], vertical_alignment="center")
-    with header:
-        st.title("Singapore regional PSI outlook")
-        st.caption("Live observations and a three-day, region-level forecast")
-        st.markdown(
-            f"<div style='background:{current_theme['surface']};"
-            f"border:1px solid {current_theme['border']};"
-            f"border-radius:12px;padding:5px 12px;letter-spacing:3px;width:max-content'>"
-            f"{current_theme['decor']}</div>",
-            unsafe_allow_html=True,
-        )
-    with theme_col:
-        st.caption("Colour theme")
-        swatches = st.columns(4, gap="small")
-        swatch_colors = {"White": "#ffffff", "Beige": "#eadcc8", "Baby blue": "#b9e1fb", "Baby purple": "#d7c5fa"}
-        swatch_css = []
-        for index, (theme_name, swatch_color) in enumerate(swatch_colors.items()):
-            swatch_key = f"theme_pick_{theme_name.lower().replace(' ', '_')}"
-            active_ring = f"0 0 0 3px {themes[theme_name]['accent']}" if st.session_state.page_theme == theme_name else "0 1px 4px #26323835"
-            swatch_css.append(
-                f".st-key-{swatch_key} button{{width:32px!important;height:32px!important;min-height:32px!important;"
-                f"padding:0!important;border-radius:50%!important;background:{swatch_color}!important;"
-                f"border:1px solid #77808b!important;box-shadow:{active_ring}!important;font-size:0!important;}}"
-                f".st-key-{swatch_key} button:hover{{transform:scale(1.1);}}"
-            )
-            if swatches[index].button("●", key=swatch_key, help=f"{theme_name} theme"):
-                st.session_state.page_theme = theme_name
-                st.rerun()
-        st.markdown(f"<style>{''.join(swatch_css)}</style>", unsafe_allow_html=True)
-        selected_theme = st.session_state.page_theme
-        theme_accent = themes[selected_theme]["accent"]
-    with avatar_col:
-        st.caption("Choose an avatar")
-        avatar_buttons = st.columns(3, gap="small")
-        avatar_css = []
-        for index, animal in enumerate(["Duck", "Dog", "Cat"]):
-            avatar_key = f"avatar_pick_{animal.lower()}"
-            image_path = ROOT / "assets" / "avatars" / f"{animal.lower()}_good.png"
-            image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
-            ring = f"0 0 0 3px {theme_accent}" if st.session_state.page_avatar == animal else "0 1px 4px #26323835"
-            avatar_css.append(
-                f".st-key-{avatar_key} button{{width:42px!important;height:42px!important;min-height:42px!important;"
-                f"padding:0!important;border-radius:12px!important;background-image:url(data:image/png;base64,{image_data})!important;"
-                f"background-size:cover!important;background-position:center!important;border:1px solid #77808b!important;"
-                f"box-shadow:{ring}!important;font-size:0!important;color:transparent!important;}}"
-            )
-            if avatar_buttons[index].button(" ", key=avatar_key, help=f"Select {animal}"):
-                st.session_state.page_avatar = animal
-                st.rerun()
-        selected_avatar = st.session_state.page_avatar
+    st.title("Singapore regional PSI outlook")
+    st.caption("Live observations and a three-day, region-level forecast")
+    st.markdown(
+        f"<div style='background:{current_theme['surface']};border:1px solid {current_theme['border']};"
+        f"border-radius:12px;padding:5px 12px;letter-spacing:3px;width:max-content'>"
+        f"{current_theme['decor']}</div>",
+        unsafe_allow_html=True,
+    )
+
+    selected_theme = st.session_state.page_theme
+    theme_accent = themes[selected_theme]["accent"]
+    swatch_colors = {"White": "#ffffff", "Beige": "#eadcc8", "Baby blue": "#b9e1fb", "Baby purple": "#d7c5fa"}
+    swatch_css, avatar_css = [], []
+    with st.container(key="responsive-controls"):
+        theme_col, avatar_col = st.columns(2, gap="large", vertical_alignment="center")
+        with theme_col:
+            st.caption("Colour theme")
+            swatches = st.columns(4, gap="small")
+            for index, (theme_name, swatch_color) in enumerate(swatch_colors.items()):
+                swatch_key = f"theme_pick_{theme_name.lower().replace(' ', '_')}"
+                active_ring = f"0 0 0 3px {themes[theme_name]['accent']}" if selected_theme == theme_name else "0 1px 4px #26323835"
+                swatch_css.append(
+                    f".st-key-{swatch_key} button{{width:34px!important;height:34px!important;min-height:34px!important;"
+                    f"padding:0!important;border-radius:50%!important;background:{swatch_color}!important;"
+                    f"border:1px solid #77808b!important;box-shadow:{active_ring}!important;font-size:0!important;}}"
+                    f".st-key-{swatch_key} button:hover{{transform:scale(1.08);}}"
+                )
+                if swatches[index].button(" ", key=swatch_key, help=f"{theme_name} theme"):
+                    st.session_state.page_theme = theme_name
+                    st.rerun()
+        with avatar_col:
+            st.caption("Choose an avatar")
+            avatar_buttons = st.columns(3, gap="small")
+            for index, animal in enumerate(["Duck", "Dog", "Cat"]):
+                avatar_key = f"avatar_pick_{animal.lower()}"
+                image_path = ROOT / "assets" / "avatars" / f"{animal.lower()}_good.png"
+                image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+                ring = f"0 0 0 3px {theme_accent}" if st.session_state.page_avatar == animal else "0 1px 4px #26323835"
+                avatar_css.append(
+                    f".st-key-{avatar_key} button{{width:42px!important;height:42px!important;min-height:42px!important;"
+                    f"padding:0!important;border-radius:12px!important;background-image:url(data:image/png;base64,{image_data})!important;"
+                    f"background-size:cover!important;background-position:center!important;border:1px solid #77808b!important;"
+                    f"box-shadow:{ring}!important;font-size:0!important;color:transparent!important;}}"
+                )
+                if avatar_buttons[index].button(" ", key=avatar_key, help=f"Select {animal}"):
+                    st.session_state.page_avatar = animal
+                    st.rerun()
+    st.markdown(f"<style>{''.join(swatch_css)}</style>", unsafe_allow_html=True)
+    selected_avatar = st.session_state.page_avatar
     theme = themes[selected_theme]
     st.markdown(f"""
     <style>
@@ -113,6 +112,21 @@ def render_dashboard():
       div.stButton > button {{ border-color: {theme['accent']}; color: {theme['accent']}; border-radius: 9px; }}
       div.stButton > button:hover {{ background: {theme['accent']}; color: white; }}
       {''.join(avatar_css)}
+      @media (max-width: 860px) {{
+        .st-key-responsive-controls [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(2):last-child) {{ flex-wrap: wrap; }}
+        .st-key-responsive-controls [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(2):last-child) > [data-testid="column"] {{ flex: 1 1 260px !important; min-width: 0 !important; }}
+        .st-key-responsive-metrics [data-testid="stHorizontalBlock"] {{ flex-wrap: wrap; }}
+        .st-key-responsive-metrics [data-testid="stHorizontalBlock"] > [data-testid="column"] {{ flex: 1 1 145px !important; min-width: 0 !important; }}
+        .st-key-responsive-map [data-testid="stHorizontalBlock"] {{ flex-wrap: wrap; }}
+        .st-key-responsive-map [data-testid="stHorizontalBlock"] > [data-testid="column"] {{ flex: 1 1 340px !important; min-width: 0 !important; }}
+        [data-testid="stMetric"] {{ padding: 8px 10px; }}
+        [data-testid="stMetricLabel"] {{ font-size: .82rem; }}
+        [data-testid="stMetricValue"] {{ font-size: 1.35rem; }}
+      }}
+      @media (max-width: 420px) {{
+        .st-key-responsive-controls [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(2):last-child) > [data-testid="column"] {{ flex-basis: 100% !important; }}
+        .st-key-responsive-map [data-testid="stHorizontalBlock"] > [data-testid="column"] {{ flex-basis: 100% !important; }}
+      }}
     </style>
     """, unsafe_allow_html=True)
     if st.button("Refresh data now", type="secondary"):
@@ -146,13 +160,14 @@ def render_dashboard():
     latest_live = psi_daily.sort_values("date").dropna(subset=["psi_max"]).iloc[-1]
     latest_weather = weather_daily.sort_values("date").dropna(subset=["wind_speed_max"]).iloc[-1]
     latest_hotspots = hotspots_daily.sort_values("date").iloc[-1]
-    live_cols = st.columns(5)
-    live_cols[0].metric("Latest daily PSI maximum", f"{latest_live.psi_max:.0f}")
-    live_cols[1].metric("Latest PSI date", latest_live.date.strftime("%d %b %Y"))
-    live_cols[2].metric("Wind speed (daily max)", f"{latest_weather.wind_speed_max:.1f} km/h")
-    live_cols[3].metric("Rainfall", f"{latest_weather.rain_mm:.1f} mm")
-    hotspot_total = sum(float(latest_hotspots.get(name, 0) or 0) for name in ["hotspots_sumatra", "hotspots_borneo", "hotspots_peninsula"])
-    live_cols[4].metric("FIRMS hotspots", f"{hotspot_total:.0f}")
+    with st.container(key="responsive-metrics"):
+        live_cols = st.columns(5)
+        live_cols[0].metric("Latest daily PSI maximum", f"{latest_live.psi_max:.0f}")
+        live_cols[1].metric("Latest PSI date", latest_live.date.strftime("%d %b %Y"))
+        live_cols[2].metric("Wind speed (daily max)", f"{latest_weather.wind_speed_max:.1f} km/h")
+        live_cols[3].metric("Rainfall", f"{latest_weather.rain_mm:.1f} mm")
+        hotspot_total = sum(float(latest_hotspots.get(name, 0) or 0) for name in ["hotspots_sumatra", "hotspots_borneo", "hotspots_peninsula"])
+        live_cols[4].metric("FIRMS hotspots", f"{hotspot_total:.0f}")
     st.caption(f"Latest weather date: {latest_weather.date:%d %b %Y} · Latest hotspot date: {latest_hotspots.date:%d %b %Y} · Forecast input through: {input_date:%d %b %Y}")
     if not metadata.get("firms_configured"):
         st.info("NASA FIRMS fire data is not refreshing because FIRMS_MAP_KEY is not set. PSI and weather refresh independently.")
@@ -242,43 +257,44 @@ def render_dashboard():
         map={"style": "open-street-map", "fitbounds": "locations", "center": {"lat": 1.3521, "lon": 103.8198}, "zoom": 10.5},
         paper_bgcolor=theme["background"], uirevision="singapore-psi-map-fit-v2",
     )
-    map_column, advisory_column = st.columns([2.6, 1.35], gap="large", vertical_alignment="top")
-    with map_column:
-        st.plotly_chart(map_figure, width="stretch", config={"scrollZoom": True})
-    with advisory_column:
-        st.markdown("#### Health advisory")
-        st.caption("MOH guidance for healthy persons")
-        haze_scale = [
-            ("Good", "0–50 PSI"), ("Moderate", "51–100 PSI"),
-            ("Unhealthy", "101–200 PSI"), ("Very Unhealthy", "201–300 PSI"),
-            ("Hazardous", "301+ PSI"),
-        ]
-        for level, psi_range in haze_scale:
-            st.markdown(
-                f"<div style='background:{category_colors[level]};color:{category_text_colors[level]};"
-                f"padding:5px 9px;margin:4px 0;border-radius:8px;font-size:13px'>"
-                f"<b>{level}</b> &nbsp; {psi_range}</div>",
-                unsafe_allow_html=True,
-            )
-        guidance = {
-            "Good": "Normal activities.",
-            "Moderate": "Normal activities.",
-            "Unhealthy": "Reduce prolonged or strenuous outdoor exertion.",
-            "Very Unhealthy": "Avoid prolonged or strenuous outdoor exertion.",
-            "Hazardous": "Minimise outdoor activity.",
-        }
-        for row in day_forecast.itertuples():
-            category = str(row.severity)
-            st.markdown(
-                f"<div style='background:{category_colors[category]}22;"
-                f"border-left:5px solid {category_colors[category]};border-radius:7px;"
-                f"padding:7px 9px;margin:7px 0;color:{theme['text']};font-size:13px'>"
-                f"<b>{row.region} · {row.predicted_psi:.0f} PSI · {category}</b><br>"
-                f"{guidance[category]}</div>",
-                unsafe_allow_html=True,
-            )
-        st.caption("Older adults, children, pregnant women, and people with chronic heart or lung conditions may need stricter precautions.")
-        st.markdown("[Full Singapore MOH haze advisory](https://www.moh.gov.sg/others/haze/)")
+    with st.container(key="responsive-map"):
+        map_column, advisory_column = st.columns([2.6, 1.35], gap="large", vertical_alignment="top")
+        with map_column:
+            st.plotly_chart(map_figure, width="stretch", config={"scrollZoom": True, "responsive": True})
+        with advisory_column:
+            st.markdown("#### Health advisory")
+            st.caption("MOH guidance for healthy persons")
+            haze_scale = [
+                ("Good", "0–50 PSI"), ("Moderate", "51–100 PSI"),
+                ("Unhealthy", "101–200 PSI"), ("Very Unhealthy", "201–300 PSI"),
+                ("Hazardous", "301+ PSI"),
+            ]
+            for level, psi_range in haze_scale:
+                st.markdown(
+                    f"<div style='background:{category_colors[level]};color:{category_text_colors[level]};"
+                    f"padding:5px 9px;margin:4px 0;border-radius:8px;font-size:13px'>"
+                    f"<b>{level}</b> &nbsp; {psi_range}</div>",
+                    unsafe_allow_html=True,
+                )
+            guidance = {
+                "Good": "Normal activities.",
+                "Moderate": "Normal activities.",
+                "Unhealthy": "Reduce prolonged or strenuous outdoor exertion.",
+                "Very Unhealthy": "Avoid prolonged or strenuous outdoor exertion.",
+                "Hazardous": "Minimise outdoor activity.",
+            }
+            for row in day_forecast.itertuples():
+                category = str(row.severity)
+                st.markdown(
+                    f"<div style='background:{category_colors[category]}22;"
+                    f"border-left:5px solid {category_colors[category]};border-radius:7px;"
+                    f"padding:7px 9px;margin:7px 0;color:{theme['text']};font-size:13px'>"
+                    f"<b>{row.region} · {row.predicted_psi:.0f} PSI · {category}</b><br>"
+                    f"{guidance[category]}</div>",
+                    unsafe_allow_html=True,
+                )
+            st.caption("Older adults, children, pregnant women, and people with chronic heart or lung conditions may need stricter precautions.")
+            st.markdown("[Full Singapore MOH haze advisory](https://www.moh.gov.sg/others/haze/)")
     st.caption("Forecast information boxes are positioned approximately over Singapore's five monitoring regions.")
 
     st.subheader("PSI trend: previous 7 days and next 3 days")
@@ -317,12 +333,18 @@ def render_dashboard():
     chart.add_trace(go.Scatter(x=avg_dates, y=avg_values, mode="lines+markers",
                                name="Singapore average (forecast)", line={"color": "#202020", "width": 3.5, "dash": "dash"}))
     chart.add_vline(x=selected_date, line_dash="dot", line_color="#777777")
-    chart.update_layout(height=430, xaxis_title="Date", yaxis_title="24-hour PSI", hovermode="x unified",
-                        legend={"orientation": "h", "y": -0.25}, margin={"t": 15, "b": 100},
-                        paper_bgcolor=theme["background"], plot_bgcolor=theme["surface"],
-                        font={"color": theme["text"]})
-    chart.update_yaxes(rangemode="tozero", gridcolor=theme["grid"])
-    st.plotly_chart(chart, width="stretch")
+    chart.update_layout(
+        autosize=True, height=410, xaxis_title="Date", yaxis_title="24-hour PSI",
+        hovermode="x unified",
+        legend={"orientation": "h", "y": -0.34, "x": 0, "font": {"size": 10},
+                "entrywidth": 95, "entrywidthmode": "pixels"},
+        margin={"t": 15, "b": 125, "l": 8, "r": 8},
+        paper_bgcolor=theme["background"], plot_bgcolor=theme["surface"],
+        font={"color": theme["text"]}, uirevision="psi-trend-v2",
+    )
+    chart.update_xaxes(tickangle=-35, automargin=True, gridcolor=theme["grid"])
+    chart.update_yaxes(rangemode="tozero", gridcolor=theme["grid"], automargin=True)
+    st.plotly_chart(chart, width="stretch", config={"responsive": True, "displayModeBar": False})
     st.caption("The shaded band shows the mean of the five regional 95% lower and upper bounds; it is a visual summary, not a separately calibrated interval for the island-wide average.")
 
     st.subheader("Forecast confidence and method")
