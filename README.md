@@ -4,6 +4,20 @@ This project combines Singapore air-quality observations, weather reanalysis, an
 
 The workflow downloads and prepares daily data, builds lagged predictors, compares a basic and a nonlinear regional forecasting model, and produces a three-day forecast table with prediction intervals and visualizations. The analysis is exploratory: the forecasts are not official NEA advisories.
 
+## Current validation results
+
+This snapshot uses 2,842 daily rows from 1 Jan 2019 through 12 Oct 2026. RMSE values below are unweighted means of the five region-specific RMSEs, evaluated on the same five chronological test folds with a horizon-sized purge gap.
+
+- **Next day (t+1):** repeating today's PSI scores **7.50 PSI RMSE**, slightly better than the selected 5a GLM (**7.62**) and the nonlinear 5b GLM (**8.16**). The model does not beat the persistence baseline for tomorrow.
+- **Days t+2 / t+3:** persistence scores **10.24 / 11.20 PSI RMSE**; 5a scores **9.52 / 10.48**; 5b scores **10.12 / 10.75**. The GLM models help more at the longer horizons.
+- **All three horizons:** the 5a GLM has the lowest mean region-horizon RMSE at **9.21 PSI**, compared with **9.65** for persistence and **9.68** for 5b. Part 6 therefore uses 5a overall; this average does not mean it wins at every horizon.
+
+**Forecast map** (12 Oct 2026):
+
+![Singapore regional PSI forecast map](figures/regional_psi_forecast_map.png)
+
+**Live dashboard:** This repository does not have a deployed app URL yet. [Open Streamlit Community Cloud to deploy it](https://share.streamlit.io/); setup steps are in [Publish on Streamlit Community Cloud](#publish-on-streamlit-community-cloud) below.
+
 ## What the analysis does
 
 The notebook explores:
@@ -13,9 +27,9 @@ The notebook explores:
 - Dry-season PSI and unhealthy-day rates by wind direction and wind-speed quartile.
 - Fire detections near the worst observed haze day, including a map with Natural Earth country boundaries.
 - Regional PSI forecasts for t+1 through t+3 using the seven daily observations from t-6 through t.
-- Horizon-specific walk-forward RMSE, confidence scores (historical share of predictions within 10 PSI), and 80%/95% prediction intervals.
+- Horizon-specific walk-forward RMSE against a tomorrow = today persistence baseline, confidence scores (historical share of predictions within 10 PSI), and 80%/95% prediction intervals.
 
-Parts 5 and 6 refresh the API-backed daily tables before modeling, then use the seven daily observations from t-6 through t to predict PSI at t+1, t+2, and t+3. Part 5 compares a regularized linear Gaussian GLM (5a) with a nonlinear extension (5b) using identical five-fold chronological validation for all five regions and all three horizons, with a purge gap equal to the horizon. Both models tune ridge regularization inside each training fold. Part 5b adds log and squared terms and same-day interactions among PSI, wind, hotspots, and rain. Predictors include regional PSI, wind direction components and speed, hotspot counts by source region, rainfall, and humidity. Part 3 also compares dry-season PSI and unhealthy-day rates across wind direction and daily maximum wind-speed quartiles.
+Parts 5 and 6 refresh the API-backed daily tables before modeling, then use the seven daily observations from t-6 through t to predict PSI at t+1, t+2, and t+3. Part 5 compares a regularized linear Gaussian GLM (5a) and nonlinear extension (5b) with a persistence baseline that repeats PSI observed at t. All three are evaluated on identical five-fold chronological test dates for all five regions and three horizons, with a purge gap equal to the horizon; only 5a and 5b are candidates for the Part 6 model selection. Both models tune ridge regularization inside each training fold. Part 5b adds log and squared terms and same-day interactions among PSI, wind, hotspots, and rain. Predictors include regional PSI, wind direction components and speed, hotspot counts by source region, rainfall, and humidity. Part 3 also compares dry-season PSI and unhealthy-day rates across wind direction and daily maximum wind-speed quartiles.
 
 ## Data sources
 
@@ -93,14 +107,15 @@ Weather for the latest days comes from Open-Meteo's forecast API because its his
 
 ## Forecast models
 
-Part 5 compares two models independently for each Singapore region:
+Part 5 compares two model candidates and a simple persistence benchmark independently for each Singapore region and horizon:
 
 | Part | Model | Approach |
 |---|---|---|
 | 5a | Gaussian GLM | Regularized linear baseline with an identity link and out-of-fold residual diagnostics |
 | 5b | Nonlinear Gaussian GLM | Adds `log1p` transforms, squared terms, and same-day PSI-weather-fire interactions; includes out-of-fold residual diagnostics |
+| Benchmark | Tomorrow = today | Repeats the region's latest observed PSI for the target day; evaluated on the same outer test folds |
 
-Part 5 compares 5a and 5b using five chronological `TimeSeriesSplit` folds for each region and horizon, with a purge gap matching the forecast horizon. It selects the model with the lowest mean RMSE across the 15 region/horizon combinations. Both models tune ridge alpha inside the training data without using the outer test fold; Part 6 repeats tuning within each calibration fold and for the final fit. Part 6 uses the Part 5 winner by region and horizon with the same seven-day input window; it reports horizon-specific walk-forward RMSE, 80%/95% prediction intervals, and a within-10-PSI confidence score from held-out residuals. These are historical validation estimates, not guarantees of future performance. PSI severity episodes are rare, and high readings may still be underpredicted.
+Part 5 evaluates all three approaches on the same five chronological `TimeSeriesSplit` folds for each region and horizon, with a purge gap matching the forecast horizon. It selects between 5a and 5b using mean RMSE across the 15 region/horizon combinations; the persistence baseline is a benchmark, not a candidate for selection. Both models tune ridge alpha inside the training data without using the outer test fold; Part 6 repeats tuning within each calibration fold and for the final fit. Part 6 uses the Part 5 winner by region and horizon with the same seven-day input window; it reports horizon-specific walk-forward RMSE, 80%/95% prediction intervals, and a within-10-PSI confidence score from held-out residuals. These are historical validation estimates, not guarantees of future performance. PSI severity episodes are rare, and high readings may still be underpredicted.
 
 Model scores and the selected model are recalculated from refreshed data whenever the notebook Parts 5 and 6 are rerun. The nonlinear extension may improve accuracy but is selected only when its chronological validation RMSE is lower.
 
