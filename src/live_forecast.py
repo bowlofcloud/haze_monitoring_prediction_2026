@@ -15,11 +15,8 @@ import requests
 from dotenv import load_dotenv
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import TweedieRegressor
-from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
-from pygam import LinearGAM, s
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -47,9 +44,6 @@ REGIONS = ["north", "south", "east", "west", "central"]
 PREDICTORS = [f"psi_{r}" for r in REGIONS] + ["wind_from_east", "wind_from_north", "wind_speed_max", "hotspots_sumatra", "hotspots_borneo", "hotspots_peninsula", "rain_mm", "humidity_mean"]
 LOG_PREDICTORS = {f"psi_{r}" for r in REGIONS} | {"wind_speed_max", "hotspots_sumatra", "hotspots_borneo", "hotspots_peninsula", "rain_mm", "humidity_mean"}
 MODEL_LABELS = ["5a GLM", "5b Nonlinear GLM"]
-LEGACY_MODEL_LABELS = ["5b Quadratic", "5c Log GLM", "5d GAM"]
-GLM_ALPHA_GRID = (0.1, 1.0, 10.0)
-NONLINEAR_ALPHA_GRID = (0.1, 1.0, 10.0, 100.0)
 
 
 def _load_script(filename, name):
@@ -195,7 +189,7 @@ def _features(frame):
 
 def _transform(x, label, log_names):
     result = x.copy()
-    if label in ("5c Log GLM", "5b Nonlinear GLM"):
+    if label == "5b Nonlinear GLM":
         result[log_names] = np.log1p(result[log_names].clip(lower=0))
     return result
 
@@ -220,8 +214,6 @@ def _expand_nonlinear_terms(values, feature_names):
 
 
 def _model(label, alpha=0.0, feature_names=None):
-    if label == "5d GAM":
-        return None
     steps = [SimpleImputer(strategy="median"), StandardScaler()]
     if label == "5b Nonlinear GLM":
         steps.extend([
@@ -229,135 +221,74 @@ def _model(label, alpha=0.0, feature_names=None):
                                 kw_args={"feature_names": feature_names}, validate=False),
             StandardScaler(),
         ])
-    if label == "5b Quadratic":
-        steps.extend([FunctionTransformer(lambda values: np.column_stack((values, values ** 2)), validate=False), StandardScaler()])
-    steps.append(TweedieRegressor(power=0, link="identity", alpha=alpha, max_iter=10000 if label == "5b Quadratic" else 2000, tol=1e-7))
+    steps.append(TweedieRegressor(power=0, link="identity", alpha=alpha, max_iter=2000, tol=1e-7))
     return make_pipeline(*steps)
 
 
 def _fit(label, x, y, alpha=0.0):
     transformed = _transform(x, label, _fit.log_names)
-    if label == "5d GAM":
-        imputer = SimpleImputer(strategy="median")
-        x_values = imputer.fit_transform(transformed)
-        terms = s(0, n_splines=6)
-        for index in range(1, x_values.shape[1]):
-            terms += s(index, n_splines=6)
-        return imputer, LinearGAM(terms, lam=0.6, max_iter=100).fit(x_values, y)
     return _model(label, alpha=alpha, feature_names=_fit.feature_names).fit(transformed, y)
 
 
 def _predict(label, fitted, x):
     transformed = _transform(x, label, _fit.log_names)
-    if label == "5d GAM":
-        imputer, model = fitted
-        return model.predict(imputer.transform(transformed))
     return fitted.predict(transformed)
 
 
-def _select_glm_alpha(x, y, horizon):
-    """Choose ridge strength using chronological folds inside the training window."""
-    splitter = TimeSeriesSplit(n_splits=2, gap=horizon)
-    scores = []
-    for alpha in GLM_ALPHA_GRID:
-        fold_errors = []
-        for train_i, valid_i in splitter.split(x):
-            model = _model("5a GLM", alpha=alpha).fit(x.iloc[train_i], y.iloc[train_i])
-            prediction = model.predict(x.iloc[valid_i])
-            fold_errors.extend(y.iloc[valid_i].to_numpy() - prediction)
-        scores.append((float(np.sqrt(np.mean(np.square(fold_errors)))), alpha))
-    return min(scores)[1]
+def generate_live_forecast(model_table, selected_model, calibration_forecast):
+    """Refit the saved Part 5 winner on current data using saved validation calibration."""
+    if selected_model not in MODEL_LABELS:
+        raise ValueError(f"Unsupported saved Part 5 model: {selected_model}")
+    required = {"region", "horizon_days", "selected_model", "predicted_psi",
+                "confidence_80_lower", "confidence_80_upper",
+                "confidence_95_lower", "confidence_95_upper",
+                "walkforward_rmse_psi", "confidence_score_pct", "glm_alpha"}
+    if not required.issubset(calibration_forecast.columns):
+        raise ValueError("Saved forecast is missing the calibration columns; rerun notebook Part 6.")
 
-
-def _select_nonlinear_alpha(x, y, horizon):
-    """Tune nonlinear-model ridge strength using inner chronological folds."""
-    splitter = TimeSeriesSplit(n_splits=2, gap=horizon)
-    scores = []
-    for alpha in NONLINEAR_ALPHA_GRID:
-        fold_errors = []
-        for train_i, valid_i in splitter.split(x):
-            model = _fit("5b Nonlinear GLM", x.iloc[train_i], y.iloc[train_i], alpha=alpha)
-            prediction = _predict("5b Nonlinear GLM", model, x.iloc[valid_i])
-            fold_errors.extend(y.iloc[valid_i].to_numpy() - prediction)
-        scores.append((float(np.sqrt(np.mean(np.square(fold_errors)))), alpha))
-    return min(scores)[1]
-
-
-def generate_forecast(model_table, selected_model=None):
-    """Use the saved Part 5 winner and calibrate its live forecast from walk-forward residuals."""
     source, features, log_names = _features(model_table)
-    _fit.log_names = log_names
-    _fit.feature_names = features
-    sample_sets, scores = {}, []
-    for horizon in (1, 2, 3):
-        for region in REGIONS:
-            target = f"psi_{region}"
-            samples = source[["date", *features]].copy()
-            samples["target_date"] = samples.date + pd.Timedelta(days=horizon)
-            target_history = source[["date", target]].rename(columns={"date": "target_date"})
-            samples = samples.merge(target_history, on="target_date", how="left").dropna(subset=[*features, target]).reset_index(drop=True)
-            splits = list(TimeSeriesSplit(n_splits=5, gap=horizon).split(samples))
-            sample_sets[(region, horizon)] = (samples, splits)
-            for label in (MODEL_LABELS if selected_model is None else []):
-                actual, predicted = [], []
-                for train_i, test_i in splits:
-                    train, test = samples.iloc[train_i], samples.iloc[test_i]
-                    if label == "5a GLM":
-                        alpha = _select_glm_alpha(train[features], train[target], horizon)
-                    elif label == "5b Nonlinear GLM":
-                        alpha = _select_nonlinear_alpha(train[features], train[target], horizon)
-                    else:
-                        alpha = 0.0
-                    model = _fit(label, train[features], train[target], alpha=alpha)
-                    predicted.extend(_predict(label, model, test[features]))
-                    actual.extend(test[target].to_numpy())
-                scores.append({"model": label, "region": region, "horizon": horizon,
-                               "rmse": mean_squared_error(actual, predicted) ** 0.5})
-    if selected_model is None:
-        metrics = pd.DataFrame(scores)
-        mean_rmse = metrics.groupby("model").rmse.mean().sort_values()
-        selected = mean_rmse.index[0]
-    else:
-        if selected_model not in MODEL_LABELS + LEGACY_MODEL_LABELS:
-            raise ValueError(f"Unknown Part 5 model in saved forecast: {selected_model}")
-        selected = selected_model
-        mean_rmse = pd.Series(dtype=float)
+    _fit.log_names, _fit.feature_names = log_names, features
     latest = source.dropna(subset=features).iloc[-1]
     anchor = pd.Timestamp(latest.date)
     rows = []
     for horizon in (1, 2, 3):
         for region in REGIONS:
-            samples, splits = sample_sets[(region, horizon)]
             target = f"psi_{region}"
-            residuals = []
-            for train_i, test_i in splits:
-                train, test = samples.iloc[train_i], samples.iloc[test_i]
-                if selected == "5a GLM":
-                    alpha = _select_glm_alpha(train[features], train[target], horizon)
-                elif selected == "5b Nonlinear GLM":
-                    alpha = _select_nonlinear_alpha(train[features], train[target], horizon)
-                else:
-                    alpha = 0.0
-                model = _fit(selected, train[features], train[target], alpha=alpha)
-                pred = _predict(selected, model, test[features])
-                residuals.extend(test[target].to_numpy() - pred)
-            if selected == "5a GLM":
-                alpha = _select_glm_alpha(samples[features], samples[target], horizon)
-            elif selected == "5b Nonlinear GLM":
-                alpha = _select_nonlinear_alpha(samples[features], samples[target], horizon)
-            else:
-                alpha = 0.0
-            model = _fit(selected, samples[features], samples[target], alpha=alpha)
-            prediction = float(_predict(selected, model, source.loc[[latest.name], features])[0])
-            q025, q10, q90, q975 = np.quantile(residuals, [0.025, 0.10, 0.90, 0.975])
-            rows.append({"forecast_date": (anchor + pd.Timedelta(days=horizon)).date().isoformat(),
-                         "horizon_days": horizon, "region": region.title(), "selected_model": selected,
-                         "predicted_psi": round(max(0, prediction), 1),
-                         "walkforward_rmse_psi": round(float(np.sqrt(np.mean(np.square(residuals)))), 1),
-                         "confidence_score_pct": round(100 * float(np.mean(np.abs(residuals) <= 10)), 1),
-                         "confidence_80_lower": round(max(0, prediction + q10), 1),
-                         "confidence_80_upper": round(max(0, prediction + q90), 1),
-                         "confidence_95_lower": round(max(0, prediction + q025), 1),
-                         "confidence_95_upper": round(max(0, prediction + q975), 1),
-                         "glm_alpha": alpha if selected in ("5a GLM", "5b Nonlinear GLM") else np.nan})
-    return pd.DataFrame(rows), selected, mean_rmse, anchor
+            samples = source[["date", *features]].copy()
+            samples["target_date"] = samples.date + pd.Timedelta(days=horizon)
+            history = source[["date", target]].rename(columns={"date": "target_date"})
+            samples = samples.merge(history, on="target_date", how="left").dropna(
+                subset=[*features, target]
+            )
+            calibration = calibration_forecast.loc[
+                (calibration_forecast.region.str.lower() == region)
+                & (calibration_forecast.horizon_days == horizon)
+                & (calibration_forecast.selected_model == selected_model)
+            ]
+            if calibration.empty:
+                raise ValueError(f"No saved validation calibration for {region}, t+{horizon}.")
+            calibration = calibration.iloc[0]
+            alpha = calibration.glm_alpha
+            alpha = float(alpha) if pd.notna(alpha) else 0.1
+            model = _fit(selected_model, samples[features], samples[target], alpha=alpha)
+            prediction = max(0.0, float(_predict(
+                selected_model, model, source.loc[[latest.name], features]
+            )[0]))
+            old_prediction = float(calibration.predicted_psi)
+            row = {
+                "forecast_date": (anchor + pd.Timedelta(days=horizon)).date().isoformat(),
+                "horizon_days": horizon, "region": region.title(),
+                "selected_model": selected_model, "predicted_psi": round(prediction, 1),
+                "walkforward_rmse_psi": calibration.walkforward_rmse_psi,
+                "confidence_score_pct": calibration.confidence_score_pct,
+                "glm_alpha": alpha,
+            }
+            for level in (80, 95):
+                for bound in ("lower", "upper"):
+                    column = f"confidence_{level}_{bound}"
+                    offset = float(calibration[column]) - old_prediction
+                    row[column] = round(max(0.0, prediction + offset), 1)
+            rows.append(row)
+    return pd.DataFrame(rows), selected_model, pd.Series(dtype=float), anchor
+
+

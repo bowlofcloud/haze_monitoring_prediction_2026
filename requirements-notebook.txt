@@ -1,0 +1,5 @@
+# Additional packages for notebook analysis and map cells
+-r requirements.txt
+geopandas>=0.14
+matplotlib>=3.7
+jupyter
