@@ -14,7 +14,8 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import TweedieRegressor
+from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
@@ -44,6 +45,26 @@ REGIONS = ["north", "south", "east", "west", "central"]
 PREDICTORS = [f"psi_{r}" for r in REGIONS] + ["wind_from_east", "wind_from_north", "wind_speed_max", "hotspots_sumatra", "hotspots_borneo", "hotspots_peninsula", "rain_mm", "humidity_mean"]
 LOG_PREDICTORS = {f"psi_{r}" for r in REGIONS} | {"wind_speed_max", "hotspots_sumatra", "hotspots_borneo", "hotspots_peninsula", "rain_mm", "humidity_mean"}
 MODEL_LABELS = ["5a GLM", "5b Nonlinear GLM"]
+
+
+class _ScaledRidge(RegressorMixin, BaseEstimator):
+    """Closed-form ridge regression, identical to the notebook's Gaussian GLM.
+
+    TweedieRegressor(power=0, link="identity") minimises
+        (1 / 2n) * sum((y - Xw)^2) + (alpha / 2) * ||w||^2,
+    which has the same solution as Ridge with penalty alpha * n. Ridge solves
+    this directly instead of iterating, so it is far faster.
+    """
+
+    def __init__(self, alpha=0.0):
+        self.alpha = alpha
+
+    def fit(self, X, y):
+        self.model_ = Ridge(alpha=self.alpha * len(X)).fit(X, y)
+        return self
+
+    def predict(self, X):
+        return self.model_.predict(X)
 
 
 def _load_script(filename, name):
@@ -95,9 +116,18 @@ def refresh_recent_data():
     started = datetime.now().astimezone()
     psi = _load_script("1_get_psi.py", "psi_downloader")
     today = date.today()
+    # Skip days that are already complete (24 hourly readings) in the saved table;
+    # past days never change, so only missing or partial days need downloading.
+    complete_days = set()
+    psi_path = PROCESSED / "psi_daily.csv"
+    if psi_path.exists():
+        saved = pd.read_csv(psi_path, usecols=["date", "n_readings"])
+        complete_days = set(saved.loc[saved.n_readings >= 24, "date"].astype(str))
     psi_rows = []
     for back in range(10, -1, -1):
         day = (today - timedelta(days=back)).isoformat()
+        if back > 0 and day in complete_days:
+            continue
         payload = psi.fetch_day(day)
         (psi.CACHE / f"{day}.json").write_text(json.dumps(payload))
         psi_rows.append(psi.summarise_day(day, payload))
@@ -221,7 +251,7 @@ def _model(label, alpha=0.0, feature_names=None):
                                 kw_args={"feature_names": feature_names}, validate=False),
             StandardScaler(),
         ])
-    steps.append(TweedieRegressor(power=0, link="identity", alpha=alpha, max_iter=2000, tol=1e-7))
+    steps.append(_ScaledRidge(alpha=alpha))
     return make_pipeline(*steps)
 
 
@@ -290,5 +320,3 @@ def generate_live_forecast(model_table, selected_model, calibration_forecast):
                     row[column] = round(max(0.0, prediction + offset), 1)
             rows.append(row)
     return pd.DataFrame(rows), selected_model, pd.Series(dtype=float), anchor
-
-
