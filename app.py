@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -13,12 +13,12 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 from config import PROCESSED
-from live_forecast import generate_forecast, refresh_recent_data
+from live_forecast import generate_live_forecast, refresh_recent_data
 
 st.set_page_config(page_title="Singapore PSI outlook", page_icon="🌫️", layout="wide")
 
 
-@st.cache_data(ttl=timedelta(hours=6), show_spinner="Refreshing recent API data and recalculating the forecast…")
+@st.cache_data(ttl=timedelta(hours=6), show_spinner="Refreshing recent API data and updating the forecast…")
 def load_dashboard():
     saved_forecast_path = PROCESSED / "regional_psi_forecast.csv"
     if saved_forecast_path.exists():
@@ -34,7 +34,9 @@ def load_dashboard():
     psi = pd.read_csv(PROCESSED / "psi_daily.csv", parse_dates=["date"])
     weather = pd.read_csv(PROCESSED / "weather_daily.csv", parse_dates=["date"])
     hotspots = pd.read_csv(PROCESSED / "hotspots_daily.csv", parse_dates=["date"])
-    forecast, winner, rankings, input_date = generate_forecast(table, selected_model=selected_model)
+    forecast, winner, rankings, input_date = generate_live_forecast(
+        table, selected_model, saved_forecast
+    )
     forecast.to_csv(PROCESSED / "regional_psi_forecast.csv", index=False)
     meta_path = PROCESSED / "live_refresh.json"
     meta_path.write_text(json.dumps(metadata, indent=2))
@@ -117,7 +119,7 @@ def render_dashboard():
         load_dashboard.clear()
 
     try:
-        with st.spinner("Loading live data and fitting the forecast model…"):
+        with st.spinner("Loading live data and updating the forecast…"):
             table, psi_daily, weather_daily, hotspots_daily, forecast, best_model, model_ranking, input_date, metadata = load_dashboard()
     except Exception as exc:
         st.error(f"Could not refresh the APIs or calculate a new forecast: {exc}")

@@ -44,14 +44,13 @@ The study period begins on 1 January 2019 and, by default, continues through the
 
 ## Installation and API keys
 
-Use Python 3.10 or newer, then install the project, notebook, and dashboard dependencies:
+Use Python 3.10 or newer. The Streamlit app installs only its runtime dependencies:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m pip install geopandas
 ```
 
-The notebook kernel and Streamlit app must use the same Python environment where these packages are installed. `geopandas` is used for notebook map visualizations.
+For notebook analysis and map cells, install the additional notebook packages with `python -m pip install -r requirements-notebook.txt`. The smaller `requirements.txt` is also the dependency file used by Streamlit Community Cloud.
 
 Create a `.env` file in the project root for API credentials:
 
@@ -90,7 +89,7 @@ From the project root, install requirements and start the local app:
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-The dashboard refreshes recent PSI and weather data on launch and every six hours while open. NASA FIRMS hotspot updates require `FIRMS_MAP_KEY` in `.env`; PSI and weather refresh without that key. Each refresh merges newer observations into the historical daily tables and keeps data from 1 January 2019 onward for the model comparison. Raw PSI downloads are limited to the recent refresh window, and the point-level FIRMS map cache is limited to 180 days; daily history remains available for training. Because you chose to preserve the full 2019 onward model history, its daily row count grows by about one row per day rather than staying fixed. The app uses the Part 5 winner recorded in the saved forecast and recalibrates that model's three-day forecast with current history. To select a different winner after changing data or model settings, rerun notebook parts 5 and 6. Press **Refresh data now** to bypass the six-hour cache.
+The dashboard refreshes recent PSI and weather data on launch and every six hours while open. NASA FIRMS hotspot updates require `FIRMS_MAP_KEY` in `.env`; PSI and weather refresh without that key. Each refresh merges newer observations into the historical daily tables and keeps data from 1 January 2019 onward for the model comparison. Raw PSI downloads are limited to the recent refresh window, and the point-level FIRMS map cache is limited to 180 days; daily history remains available for training. Because you chose to preserve the full 2019 onward model history, its daily row count grows by about one row per day rather than staying fixed. The app refits the saved Part 5 winner on current data and reuses its saved walk-forward calibration ranges, avoiding the full multi-fold model search on each refresh. To update the selected model or its calibration after changing data or model settings, rerun notebook Parts 5 and 6. Press **Refresh data now** to bypass the six-hour cache.
 
 ### Publish on Streamlit Community Cloud
 
@@ -145,6 +144,7 @@ Raw downloads under `data/raw/` are cached locally and excluded from Git.
 src/           Numbered download, dataset-building scripts, and config.py
 notebooks/     Exploratory analysis, model evaluation, and forecasts
 requirements.txt
+requirements-notebook.txt
 data/          Raw caches and generated processed data
 figures/       Generated plots
 ```
